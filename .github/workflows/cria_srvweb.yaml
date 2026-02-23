@@ -2,7 +2,9 @@ name: Deploy EC2 com Página Web
 run-name: ${{ github.actor }} iniciou o deploy da EC2
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   codevalidate:
