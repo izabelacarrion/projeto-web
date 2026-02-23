@@ -1,0 +1,81 @@
+name: Deploy EC2 com Página Web
+run-name: ${{ github.actor }} iniciou o deploy da EC2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  codevalidate:
+    name: "Verifica o código Terraform"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init -backend=false
+      - run: terraform validate
+
+  terraform_apply:
+    name: "Executa o Terraform Apply"
+    needs: codevalidate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configura credenciais da AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Criar arquivo backend-config.tfvars
+        run: |
+          cat <<EOF > backend-config.tfvars
+          bucket = "${{ secrets.TF_BUCKET }}"
+          key    = "terraform.tfstate"
+          region = "${{ secrets.AWS_DEFAULT_REGION }}"
+          EOF
+
+      - name: Terraform Init com Backend Real
+        run: terraform init -backend-config=backend-config.tfvars
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+
+      - name: Capturar IP e ID do Security Group
+        id: vars
+        run: |
+          echo "ec2_ip=$(terraform output -raw instancia_ip)" >> $GITHUB_OUTPUT
+          echo "sg_id=$(terraform output -raw security_group_id)" >> $GITHUB_OUTPUT
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          # Cria o arquivo da chave a partir do Secret do GitHub
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Evita que o SSH trave perguntando "Deseja continuar a conexão? (yes/no)"
+          echo "StrictHostKeyChecking no" >> ~/.ssh/config
+
+      - name: Abrir Porta 22 (SSH) temporariamente
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ steps.vars.outputs.sg_id }} \
+            --protocol tcp --port 22 --cidr 0.0.0.0/0 
+
+      - name: Executar Ansible Playbook
+        run: |
+          # O Ansible já vem pré-instalado nos runners Ubuntu do GitHub
+          ansible-playbook -i '${{ steps.vars.outputs.ec2_ip }},' \
+            -u ubuntu \
+            --private-key ~/.ssh/id_rsa \
+            playbook.yml
+
+      - name: Fechar Porta 22 (SSH)
+        if: always() 
+        run: |
+          aws ec2 revoke-security-group-ingress \
