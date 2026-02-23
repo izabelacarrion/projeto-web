@@ -7,3 +7,7 @@ output "webserver_instance_public_addr" {
   value       = module.webserver.instance_public_addr
   description = "IP Publico da instância"
 }
+
+output "security_group_id" {
+  value = module.webserver.aws_security_group.sg_terraform.id
+}

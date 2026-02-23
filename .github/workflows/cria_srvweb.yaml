@@ -49,7 +49,7 @@ jobs:
       - name: Capturar IP e ID do Security Group
         id: vars
         run: |
-          echo "ec2_ip=$(terraform output -raw instancia_ip)" >> $GITHUB_OUTPUT
+          echo "ec2_ip=$(terraform output -raw webserver_instance_public_addr)" >> $GITHUB_OUTPUT
           echo "sg_id=$(terraform output -raw security_group_id)" >> $GITHUB_OUTPUT
 
       - name: Setup SSH Key
