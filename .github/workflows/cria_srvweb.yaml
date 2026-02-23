@@ -76,6 +76,10 @@ jobs:
             playbook.yml
 
       - name: Fechar Porta 22 (SSH)
-        if: always() 
+        if: always() # Garante que a porta feche mesmo se o Ansible falhar
         run: |
           aws ec2 revoke-security-group-ingress \
+            --group-id ${{ steps.vars.outputs.sg_id }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr 0.0.0.0/0
