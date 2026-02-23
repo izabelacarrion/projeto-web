@@ -1,0 +1,38 @@
+name: Destruir infraestrutura EC2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v3
+
+      - name: Configurar credenciais da AWS
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Criar backend-config.tfvars
+        run: |
+          cat <<EOF > backend-config.tfvars
+          bucket = "${{ secrets.TF_BUCKET }}"
+          key    = "terraform.tfstate"
+          region = "${{ secrets.AWS_REGION }}"
+          EOF
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.7
+
+      - name: Inicializar Terraform
+        run: terraform init -backend-config="backend-config.tfvars" -reconfigure
+
+      - name: Destruir infraestrutura
+        run: terraform destroy -auto-approve
