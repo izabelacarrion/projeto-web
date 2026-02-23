@@ -43,6 +43,14 @@ jobs:
       - name: Terraform Init com Backend Real
         run: terraform init -backend-config=backend-config.tfvars
 
+      - name: Rodar tfsec
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          soft_fail: true
+
+      - name: Terraform Plan
+        run: terraform plan -out=plan.out
+
       - name: Terraform Apply
         run: terraform apply -auto-approve
 
