@@ -9,6 +9,6 @@ output "webserver_instance_public_addr" {
 }
 
 output "security_group_id" {
-  value       = module.webserver.security_group_id.id
+  value       = module.webserver.security_group_id
   description = "ID do Security Group"
 }
