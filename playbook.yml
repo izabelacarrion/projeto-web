@@ -1,0 +1,29 @@
+---
+- name: Deploy do Site Web
+  hosts: all
+  become: yes
+  tasks:
+    - name: Garantir que o Nginx está instalado
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Remover arquivos padrão do Nginx
+      file:
+        path: /var/www/html/index.nginx-debian.html
+        state: absent
+
+    - name: Copiar arquivos do site para o servidor
+      copy:
+        src: website/  # Origem (pasta local no runner do GitHub)
+        dest: /var/www/html/ # Destino (dentro da EC2)
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    - name: Garantir que o Nginx está rodando e habilitado
+      service:
+        name: nginx
+        state: started
+        enabled: yes
