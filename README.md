@@ -44,3 +44,6 @@ O workflow no GitHub Actions foi estruturado em dois jobs principais para garant
 **Security Scan**: Utiliza o tfsec para analisar vulnerabilidades antes de qualquer simulação.
 
 **Ansible Playbook**: Executa uma playbook com Ansible para configurar o Nginx e a página web. 
+
+© 2026 - Desenvolvido por Izabela Carrion para fins de estudo em Cloud & DevOps.
+
