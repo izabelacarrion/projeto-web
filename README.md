@@ -32,18 +32,21 @@ Este projeto demonstra o provisionamento de uma infraestrutura básica na AWS ut
     └── imagens/ # Diretório que hospeda as imagens do site, que serão armazenadas dentro da instância EC2.
 ```
 
-## 🚀 Pipeline de CI/CD
-O workflow no GitHub Actions foi estruturado em dois jobs principais para garantir a visibilidade do processo:
+## 🚀  Fluxo de CI/CD (GitHub Actions)
+O deploy é dividido em 5 etapas automatizadas para garantir segurança e consistência:
 
-**Terraform Plan**: Valida a sintaxe do código e exibe as mudanças que serão realizadas.
+**codevalidate (Validação)**: Checa a sintaxe do Terraform para evitar erros de escrita.
 
-**Terraform Apply**: Executa o provisionamento real dos recursos no ambiente do LocalStack.
+**security_scan (Segurança)**: Utiliza o tfsec para identificar brechas de segurança na infraestrutura.
 
-**Check Code Quality**: Roda terraform fmt e validate para garantir que o código está bem escrito.
+**terraform_plan (Planejamento)**: Calcula as mudanças necessárias comparando o código com o estado atual na AWS.
 
-**Security Scan**: Utiliza o tfsec para analisar vulnerabilidades antes de qualquer simulação.
+**terraform_apply (Execução)**: Cria/atualiza os recursos (EC2, VPC, etc.) e exporta o IP da instância.
 
-**Ansible Playbook**: Executa uma playbook com Ansible para configurar o Nginx e a página web. 
+**ansible_provisioning (Configuração)**: * Abre a porta 22 (SSH) no firewall da AWS. Instala e configura o servidor web via Ansible Playbook. Fecha a porta 22 automaticamente ao finalizar (mesmo em caso de erro).
+
+<img width="1175" height="357" alt="Captura de tela de 2026-02-24 10-47-35" src="https://github.com/user-attachments/assets/57723a4b-5da6-4d87-8760-ec5f065af2c1" />
+
 
 © 2026 - Desenvolvido por Izabela Carrion para fins de estudo em Cloud & DevOps.
 
