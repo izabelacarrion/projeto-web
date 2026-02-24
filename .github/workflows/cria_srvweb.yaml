@@ -7,6 +7,7 @@ on:
       - main
 
 jobs:
+  # 1. Validação do código (Mantido)
   codevalidate:
     name: "Verifica o código Terraform"
     runs-on: ubuntu-latest
@@ -16,15 +17,29 @@ jobs:
       - run: terraform init -backend=false
       - run: terraform validate
 
-  terraform_apply:
-    name: "Executa o Terraform Apply"
-    needs: codevalidate
+  # 2. Verificação de Segurança
+  security_scan:
+    name: "Análise de Segurança (tfsec)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+        
+      - name: Rodar tfsec
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          soft_fail: true
+
+  # 3. Planejamento da Infraestrutura
+  terraform_plan:
+    name: "Gera o Terraform Plan"
+    needs: [codevalidate, security_scan]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
 
-      - name: Terraform
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
       - name: Configura credenciais da AWS
@@ -45,13 +60,42 @@ jobs:
       - name: Terraform Init com Backend Real
         run: terraform init -backend-config=backend-config.tfvars
 
-      - name: Rodar tfsec
-        uses: aquasecurity/tfsec-action@v1.0.0
-        with:
-          soft_fail: true
-
       - name: Terraform Plan
         run: terraform plan -out=plan.out
+
+  # 4. Aplicação da Infraestrutura
+  terraform_apply:
+    name: "Executa o Terraform Apply"
+    needs: terraform_plan
+    runs-on: ubuntu-latest
+    # Exportando as saídas dos steps para serem usadas no job do Ansible
+    outputs:
+      ec2_ip: ${{ steps.vars.outputs.ec2_ip }}
+      sg_id: ${{ steps.vars.outputs.sg_id }}
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configura credenciais da AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Criar arquivo backend-config.tfvars
+        run: |
+          cat <<EOF > backend-config.tfvars
+          bucket = "${{ secrets.TF_BUCKET }}"
+          key    = "terraform.tfstate"
+          region = "${{ secrets.AWS_DEFAULT_REGION }}"
+          EOF
+
+      - name: Terraform Init com Backend Real
+        run: terraform init -backend-config=backend-config.tfvars
 
       - name: Terraform Apply
         run: terraform apply -auto-approve
@@ -62,34 +106,49 @@ jobs:
           echo "ec2_ip=$(terraform output -raw webserver_instance_public_addr)" >> $GITHUB_OUTPUT
           echo "sg_id=$(terraform output -raw security_group_id)" >> $GITHUB_OUTPUT
 
+  # 5. Configuração via Ansible
+  ansible_provisioning:
+    name: "Configuração via Ansible"
+    needs: terraform_apply
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configura credenciais da AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
       - name: Setup SSH Key
         run: |
           mkdir -p ~/.ssh
-          # Cria o arquivo da chave a partir do Secret do GitHub
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          # Evita que o SSH trave perguntando "Deseja continuar a conexão? (yes/no)"
           echo "StrictHostKeyChecking no" >> ~/.ssh/config
 
       - name: Abrir Porta 22 (SSH) temporariamente
+        # Chamando a variável sg_id que foi gerada no job anterior
         run: |
           aws ec2 authorize-security-group-ingress \
-            --group-id ${{ steps.vars.outputs.sg_id }} \
+            --group-id ${{ needs.terraform_apply.outputs.sg_id }} \
             --protocol tcp --port 22 --cidr 0.0.0.0/0 
 
       - name: Executar Ansible Playbook
+        # Chamando a variável ec2_ip que foi gerada no job anterior
         run: |
-          # O Ansible já vem pré-instalado nos runners Ubuntu do GitHub
-          ansible-playbook -i '${{ steps.vars.outputs.ec2_ip }},' \
+          ansible-playbook -i '${{ needs.terraform_apply.outputs.ec2_ip }},' \
             -u ubuntu \
             --private-key ~/.ssh/id_rsa \
             playbook.yml
 
       - name: Fechar Porta 22 (SSH)
-        if: always() # Garante que a porta feche mesmo se o Ansible falhar
+        if: always()
         run: |
           aws ec2 revoke-security-group-ingress \
-            --group-id ${{ steps.vars.outputs.sg_id }} \
+            --group-id ${{ needs.terraform_apply.outputs.sg_id }} \
             --protocol tcp \
             --port 22 \
             --cidr 0.0.0.0/0
